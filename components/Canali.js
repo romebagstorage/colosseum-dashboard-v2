@@ -121,7 +121,7 @@ function Misura({ data, houses, year, monthIdx }) {
             <tbody>
               {righe.map((r) => (
                 <tr key={r.id}>
-                  <td><span className="inline-flex gap-2 items-center"><Dot id={r.id} />{r.name}{r.stimato && <span className="pill yellow" title={r.id === 'sito' ? "Il netto del sito toglie un costo Stripe stimato (2,5% + 0,25 €)" : "Il netto Booking è calcolato con la commissione misurata per casa: vedi nota sotto"}>stimato</span>}</span></td>
+                  <td><span className="inline-flex gap-2 items-center"><Dot id={r.id} />{r.name}{r.stimato && <span className="pill yellow" title={r.id === 'sito' ? "Il netto del sito toglie un costo Stripe stimato (circa 2%)" : "Il netto Booking è calcolato con la commissione misurata per casa: vedi nota sotto"}>stimato</span>}</span></td>
                   <td className="num">{nf0.format(r.notti)}</td>
                   <td className="num">{fmtEur(r.pagato)}</td>
                   <td className="num">{fmtEur(r.pagatoNotte)}</td>
