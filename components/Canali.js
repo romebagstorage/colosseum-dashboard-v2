@@ -26,7 +26,7 @@ import {
   GRUPPI, misura, somma, mesiDelPeriodo, avvisiMisura, nottiUltimoAnno,
 } from '@/lib/canali';
 
-const COLORE = { airbnb: BRAND.colors.danger, booking: BRAND.colors.info, direct: BRAND.colors.brand, altri: BRAND.colors.inkSubtle };
+const COLORE = { airbnb: BRAND.colors.danger, booking: BRAND.colors.info, direct: BRAND.colors.brand, sito: BRAND.colors.brand, manuale: BRAND.colors.warning, partner: BRAND.colors.success, altri: BRAND.colors.inkSubtle };
 const COMM_LABEL = { airbnb: 'Commissione Airbnb', booking: 'Commissione e costi Booking', direct: "Costo d'incasso" };
 const BOZZA = 'canali.bozza.v1';
 
@@ -121,7 +121,7 @@ function Misura({ data, houses, year, monthIdx }) {
             <tbody>
               {righe.map((r) => (
                 <tr key={r.id}>
-                  <td><span className="inline-flex gap-2 items-center"><Dot id={r.id} />{r.name}{r.stimato && <span className="pill yellow" title="Il netto Booking è calcolato con la commissione misurata per casa: vedi nota sotto">stimato</span>}</span></td>
+                  <td><span className="inline-flex gap-2 items-center"><Dot id={r.id} />{r.name}{r.stimato && <span className="pill yellow" title={r.id === 'sito' ? "Il netto del sito toglie un costo Stripe stimato (2,5% + 0,25 €)" : "Il netto Booking è calcolato con la commissione misurata per casa: vedi nota sotto"}>stimato</span>}</span></td>
                   <td className="num">{nf0.format(r.notti)}</td>
                   <td className="num">{fmtEur(r.pagato)}</td>
                   <td className="num">{fmtEur(r.pagatoNotte)}</td>
@@ -148,12 +148,12 @@ function Misura({ data, houses, year, monthIdx }) {
           <h4 className="text-xs font-semibold mt-5 mb-2" style={{ color: 'var(--brand-dark)', textTransform: 'uppercase', letterSpacing: '.6px' }}>Per casa · ti arriva a notte e quota netto/pagato</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr><th>Casa</th>{GRUPPI.slice(0, 3).map((g) => <th key={g.id} className="num"><span className="inline-flex gap-1 items-center"><Dot id={g.id} />{g.name.split(',')[0]}</span></th>)}</tr></thead>
+              <thead><tr><th>Casa</th>{GRUPPI.filter((g) => g.id !== 'altri').map((g) => <th key={g.id} className="num"><span className="inline-flex gap-1 items-center"><Dot id={g.id} />{g.name.split(',')[0]}</span></th>)}</tr></thead>
               <tbody>
                 {houses.map((h) => (
                   <tr key={h}>
                     <td>{HOUSES_META[h]?.short}</td>
-                    {GRUPPI.slice(0, 3).map((g) => { const s = somma(tab, [h], [g.id], mesi); return <td key={g.id} className="num">{s.notti ? <>{fmtEur(s.nettoNotte)} <span style={{ color: 'var(--text-dim)' }}>· {quota(s.quota)} · {nf0.format(s.notti)} n.</span></> : '—'}</td>; })}
+                    {GRUPPI.filter((g) => g.id !== 'altri').map((g) => { const s = somma(tab, [h], [g.id], mesi); return <td key={g.id} className="num">{s.notti ? <>{fmtEur(s.nettoNotte)} <span style={{ color: 'var(--text-dim)' }}>· {quota(s.quota)} · {nf0.format(s.notti)} n.</span></> : '—'}</td>; })}
                   </tr>
                 ))}
               </tbody>
@@ -167,7 +167,7 @@ function Misura({ data, houses, year, monthIdx }) {
                 <table className="w-full text-sm">
                   <thead><tr><th>Portale</th>{mesiAnno.map((m) => <th key={m} className="num">{MONTHS[Number(m.slice(5, 7)) - 1]}</th>)}</tr></thead>
                   <tbody>
-                    {GRUPPI.slice(0, 3).map((g) => (
+                    {GRUPPI.filter((g) => g.id !== 'altri').map((g) => (
                       <tr key={g.id}>
                         <td><span className="inline-flex gap-2 items-center"><Dot id={g.id} />{g.name.split(',')[0]}</span></td>
                         {mesiAnno.map((m) => { const s = somma(tab, houses, [g.id], [m]); return <td key={m} className="num" title={s.notti ? `${nf0.format(s.notti)} notti · ${fmtEur(s.nettoNotte)} a notte` : ''}>{s.notti ? quota(s.quota) : '—'}</td>; })}
