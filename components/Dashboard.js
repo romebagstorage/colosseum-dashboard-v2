@@ -744,14 +744,15 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
                       const st = STATO_VENDITA[c.stato];
                       return (
                         <td key={c.month} className="num tip-wrap has-tip" tabIndex={0} style={{ background: st.bg }}>
-                          <div style={{ fontWeight: 600, color: st.fg }}>{c.prezzo != null && c.liberi ? fmtEur(c.prezzo) : '—'}</div>
+                          <div style={{ fontWeight: 600, color: st.fg }}>{c.atteso != null && c.liberi ? fmtEur(c.atteso) : '—'}</div>
                           <div className="text-xs" style={{ color: 'var(--text-dim)' }}>
                             {c.stato === 'grigio' ? (c.lancio ? 'anno di lancio' : 'poche notti') : c.stato === 'pieno' ? 'pieno' : `${fmtPctS(c.dPrezzo)} · ${fmtNum(c.notti)}/${fmtNum(c.lyNottiAllaData)} n.`}
                           </div>
                           <TipPop width={340} align={i >= r.mesi.length / 2 ? 'right' : undefined} tip={{
                             title: `${HOUSES_META[r.h]?.short || r.h}, ${monthLabel(c.month)}: ${st.label.toLowerCase()}`,
                             rows: [
-                              ['Prezzo chiesto oggi (giorni liberi)', c.prezzo != null ? fmtEur(c.prezzo) : '—'],
+                              ['Prezzo PriceLabs oggi (giorni liberi)', c.prezzo != null ? fmtEur(c.prezzo) : '—'],
+                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
                               ['Consiglio PriceLabs', c.consiglio != null ? fmtEur(c.consiglio) : '—'],
                               ['Giorni ancora in vendita', `${fmtNum(c.liberi)} su ${fmtNum(c.giorni)}`],
                               ['Incassato a notte, anno scorso', c.lyAdr != null ? `${fmtEur(c.lyAdr)} (${fmtNum(c.lyNotti)} notti)` : '—'],
@@ -768,8 +769,15 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
               </tbody>
             </table>
           </div>
-          <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
-            Prezzo chiesto = prezzo a notte su Guesty letto ogni mattina da PriceLabs, media dei giorni ancora liberi, <b>prima del ricarico dei portali</b> (Airbnb +30%): l'ospite su Airbnb vede di più. Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
+          {rows[0] && (
+            <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
+              <b>Da PriceLabs a pagato dall'ospite:</b>{' '}
+              {rows[0].portali.map(p => `${p.nome} ${p.ricarico ? '+' + p.ricarico + '%' : '0%'} e sconti medi −${Math.round(p.sconti * 100)}% (× ${p.fattore.toFixed(2).replace('.', ',')})`).join(' · ')}.
+              {' '}Pesati sulle notti di ogni casa per portale: {rows.map(r => `${HOUSES_META[r.h]?.short || r.h} × ${r.fattore.toFixed(2).replace('.', ',')}`).join(', ')}.
+            </div>
+          )}
+          <div className="text-xs mt-2" style={{ color: 'var(--text-dim)' }}>
+            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × ricarico di ogni portale × sconti medi (mobile, Genius, ospiti migliori, last minute, settimanali…, con quanto spesso scattano), pesato sulle notti della casa per portale. Ricarichi, sconti e frequenze sono quelli del simulatore «Parità OTA» (scheda Canali, configurazione attuale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
             {' '}Rosso = prezzo più alto di almeno il {s.prezzoAlto}% <b>e</b> meno notti già vendute che alla stessa data dell'anno scorso. Giallo = solo una delle due. Grigio = l'anno scorso meno di {s.minNottiAnnoScorso} notti vendute nel mese o casa aperta da meno di {s.mesiLancio} mesi.
             {' '}I prezzi lontani sono sempre più alti di quello che poi si incassa (gli sconti arrivano dopo): il giallo sui mesi lontani da solo non è un allarme, il rosso sì. Soglie in config/prezzi-vendita.js.
           </div>
