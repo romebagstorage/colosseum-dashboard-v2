@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
@@ -13,6 +13,8 @@ import {
 import { BRAND } from '@/config/brand';
 import CanaliView from '@/components/Canali';
 import { avvisiMisura } from '@/lib/canali';
+import { prezziInVendita } from '@/lib/prezzi-vendita';
+import { PREZZI_VENDITA_SOGLIE } from '@/config/prezzi-vendita';
 import {
   kpiForHouseYear, kpiAggregatedYear, monthlySeries, availableYears,
   channelMix, topCountries, losByHouse, losDistribution,
@@ -566,7 +568,7 @@ function ForwardView({ data, houses }) {
                 <th className="num">Ricavi oggi</th>
                 <th className="num">Ricavi al {lyLabel}</th>
                 <th className="num">Δ ricavi</th>
-                <th className="num">Prezzo/notte oggi</th>
+                <th className="num">Prezzo/notte oggi (senza pulizie)</th>
                 <th className="num">Prezzo/notte al {lyLabel}</th>
                 <th className="num">Δ prezzo</th>
                 <th className="num">Riempimento oggi</th>
@@ -587,9 +589,9 @@ function ForwardView({ data, houses }) {
                     <td className="num">{fmtEur(m.revenue)}</td>
                     <td className="num">{m.lyHasData ? fmtEur(m.lyRevenue) : '—'}</td>
                     <td className="num">{m.lyHasData ? changePill(pctChange(m.revenue, m.lyRevenue)) : '—'}</td>
-                    <td className="num">{m.booked ? fmtEur(m.revenue / m.booked) : '—'}</td>
-                    <td className="num">{m.lyHasData && m.lyBooked ? fmtEur(m.lyRevenue / m.lyBooked) : '—'}</td>
-                    <td className="num">{m.lyHasData && m.booked && m.lyBooked ? changePill(pctChange(m.revenue / m.booked, m.lyRevenue / m.lyBooked)) : '—'}</td>
+                    <td className="num">{m.booked ? fmtEur(m.roomRevenue / m.booked) : '—'}</td>
+                    <td className="num">{m.lyHasData && m.lyBooked ? fmtEur(m.lyRoomRevenue / m.lyBooked) : '—'}</td>
+                    <td className="num">{m.lyHasData && m.booked && m.lyBooked ? changePill(pctChange(m.roomRevenue / m.booked, m.lyRoomRevenue / m.lyBooked)) : '—'}</td>
                     <td className="num">{fmtPct(fill)}</td>
                     <td className="num">{m.lyHasData ? fmtPct(lyFillM) : '—'}</td>
                     <td className="num">{m.lyHasData ? `${fmtNum(m.lyFinalBooked)} notti · ${fmtEur(m.lyFinalRevenue)}` : '—'}</td>
@@ -615,6 +617,7 @@ function ForwardView({ data, houses }) {
       </Panel>
 
       <PricePanel data={data} houses={houses} lyLabel={lyLabel} />
+      <PrezziVenditaPanel data={data} houses={houses} lyLabel={lyLabel} />
       <PickupPanel data={data} houses={houses} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
         <ChannelForwardPanel data={data} houses={houses} lyLabel={lyLabel} />
@@ -635,7 +638,8 @@ function PricePanel({ data, houses, lyLabel, months = 6 }) {
   const rows = useMemo(() => houses.map(h => {
     const ms = forwardBooking(data, new Date(), [h], months).months;
     const sum = k => ms.reduce((a, m) => a + (m[k] || 0), 0);
-    const n = sum('booked'), rev = sum('revenue'), ln = sum('lyBooked'), lrev = sum('lyRevenue');
+    // Solo alloggio (senza pulizie): con le pulizie i soggiorni corti gonfiano il prezzo a notte.
+    const n = sum('booked'), rev = sum('roomRevenue'), ln = sum('lyBooked'), lrev = sum('lyRoomRevenue');
     return { h, n, rev, ln, lrev, adr: n ? rev / n : null, lyAdr: ln ? lrev / ln : null, months: ms };
   }), [data, houses, months]);
   const tot = rows.reduce((a, r) => ({ n: a.n + r.n, rev: a.rev + r.rev, ln: a.ln + r.ln, lrev: a.lrev + r.lrev }), { n: 0, rev: 0, ln: 0, lrev: 0 });
@@ -666,7 +670,7 @@ function PricePanel({ data, houses, lyLabel, months = 6 }) {
               <tr key={r.h}>
                 <td className="tip-wrap has-tip" tabIndex={0}>
                   {HOUSES_META[r.h]?.name || r.h}
-                  <TipPop wide tip={{ title: `${HOUSES_META[r.h]?.short || r.h}: prezzo/notte mese per mese`, rows: r.months.map(m => [monthLabel(m.month), `${m.booked ? fmtEur(m.revenue / m.booked) : '—'} vs ${m.lyBooked ? fmtEur(m.lyRevenue / m.lyBooked) : '—'}`]), note: `Oggi vs prenotato al ${lyLabel}.` }} />
+                  <TipPop wide tip={{ title: `${HOUSES_META[r.h]?.short || r.h}: prezzo/notte mese per mese`, rows: r.months.map(m => [monthLabel(m.month), `${m.booked ? fmtEur(m.roomRevenue / m.booked) : '—'} vs ${m.lyBooked ? fmtEur(m.lyRoomRevenue / m.lyBooked) : '—'}`]), note: `Oggi vs prenotato al ${lyLabel}.` }} />
                 </td>
                 <td className="num">{fmtNum(r.n)}</td>
                 <td className="num">{fmtEur(r.adr)}</td>
@@ -679,8 +683,106 @@ function PricePanel({ data, houses, lyLabel, months = 6 }) {
         </table>
       </div>
       <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
-        Prezzo/notte = pagamento totale meno tassa di soggiorno, diviso per le notti: comprende le pulizie, quindi i soggiorni corti lo fanno salire. Le case senza notti in uno dei due periodi non entrano nel confronto a parità di case.
+        Prezzo/notte = pagamento totale meno tassa di soggiorno e pulizie, diviso per le notti: è il prezzo del solo alloggio, quello che i soggiorni corti non gonfiano. Le case senza notti in uno dei due periodi non entrano nel confronto a parità di case.
       </div>
+    </Panel>
+  );
+}
+
+// ---- Prezzi in vendita: quanto si chiede oggi per le notti libere (foto PriceLabs del mattino) ----
+const STATO_VENDITA = {
+  rosso:  { bg: 'rgba(160,78,58,0.14)',  fg: 'var(--red)',    label: 'Prezzo alto e ritmo sotto l\'anno scorso' },
+  giallo: { bg: 'rgba(182,138,62,0.14)', fg: 'var(--yellow)', label: 'Prezzo alto oppure ritmo sotto: da guardare' },
+  verde:  { bg: 'rgba(107,142,90,0.12)', fg: 'var(--green)',  label: 'In linea' },
+  grigio: { bg: 'var(--raised)',         fg: 'var(--text-dim)', label: 'Anno scorso non confrontabile' },
+  pieno:  { bg: 'var(--raised)',         fg: 'var(--text-dim)', label: 'Nessuna notte in vendita' },
+  manca:  { bg: 'transparent',           fg: 'var(--text-subtle)', label: 'PriceLabs senza prezzi' },
+};
+
+function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
+  const [foto, setFoto] = useState(null);
+  const [errore, setErrore] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch('/api/pricelabs/ultima', { cache: 'no-store' })
+      .then(async r => { const j = await r.json().catch(() => ({})); if (!vivo) return; if (r.ok && j.ok) setFoto(j); else setErrore(j.error || `errore ${r.status}`); })
+      .catch(e => vivo && setErrore(e.message));
+    return () => { vivo = false; };
+  }, []);
+  const rows = useMemo(() => (foto ? prezziInVendita(foto, data, houses, new Date(), months) : []), [foto, data, houses, months]);
+  const senzaPulizie = (data?.reservations || []).some(r => r.cleaning != null);
+  const s = PREZZI_VENDITA_SOGLIE;
+  const conteggio = rows.flatMap(r => r.mesi).reduce((a, c) => ({ ...a, [c.stato]: (a[c.stato] || 0) + 1 }), {});
+  const fmtPctS = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${Math.round(v)}%`;
+  const hint = foto ? `foto PriceLabs del ${fmtDay(foto.giorno)}${foto.vecchia_di_giorni ? ` (di ${foto.vecchia_di_giorni} giorni fa)` : ''}, prossimi ${months} mesi` : `prossimi ${months} mesi`;
+  return (
+    <Panel title="Prezzi in vendita" hint={hint} extra="mt-4">
+      {errore && <EmptyState message={`Foto dei prezzi PriceLabs non disponibile: ${errore}`} />}
+      {!errore && !foto && <EmptyState message="Carico la foto dei prezzi PriceLabs…" />}
+      {foto && (
+        <>
+          <div className="flex flex-wrap gap-2 mb-3 text-xs">
+            {['rosso', 'giallo', 'verde', 'grigio'].map(k => (
+              <span key={k} className="pill" style={{ background: STATO_VENDITA[k].bg, color: STATO_VENDITA[k].fg }}>
+                {STATO_VENDITA[k].label}: {conteggio[k] || 0}
+              </span>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th>Casa</th>
+                  {(rows[0]?.mesi || []).map(c => <th key={c.month} className="num">{monthLabel(c.month)}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.h}>
+                    <td>{HOUSES_META[r.h]?.short || r.h}</td>
+                    {r.mesi.map((c, i) => {
+                      const st = STATO_VENDITA[c.stato];
+                      return (
+                        <td key={c.month} className="num tip-wrap has-tip" tabIndex={0} style={{ background: st.bg }}>
+                          <div style={{ fontWeight: 600, color: st.fg }}>{c.atteso != null && c.liberi ? fmtEur(c.atteso) : '—'}</div>
+                          <div className="text-xs" style={{ color: 'var(--text-dim)' }}>
+                            {c.stato === 'grigio' ? (c.lancio ? 'anno di lancio' : 'poche notti') : c.stato === 'pieno' ? 'pieno' : `${fmtPctS(c.dPrezzo)} · ${fmtNum(c.notti)}/${fmtNum(c.lyNottiAllaData)} n.`}
+                          </div>
+                          <TipPop width={340} align={i >= r.mesi.length / 2 ? 'right' : undefined} tip={{
+                            title: `${HOUSES_META[r.h]?.short || r.h}, ${monthLabel(c.month)}: ${st.label.toLowerCase()}`,
+                            rows: [
+                              ['Prezzo PriceLabs oggi (giorni liberi)', c.prezzo != null ? fmtEur(c.prezzo) : '—'],
+                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
+                              ['Consiglio PriceLabs', c.consiglio != null ? fmtEur(c.consiglio) : '—'],
+                              ['Giorni ancora in vendita', `${fmtNum(c.liberi)} su ${fmtNum(c.giorni)}`],
+                              ['Incassato a notte, anno scorso', c.lyAdr != null ? `${fmtEur(c.lyAdr)} (${fmtNum(c.lyNotti)} notti)` : '—'],
+                              ['Differenza di prezzo', fmtPctS(c.dPrezzo)],
+                              ['Notti vendute: oggi / al ' + lyLabel, `${fmtNum(c.notti)} / ${fmtNum(c.lyNottiAllaData)}`],
+                            ],
+                            note: c.lancio ? 'La casa era aperta da pochi mesi: il prezzo dell\'anno scorso era di lancio e non fa testo.' : null,
+                          }} />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows[0] && (
+            <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
+              <b>Da PriceLabs a pagato dall'ospite:</b>{' '}
+              {rows[0].portali.map(p => `${p.nome} ${p.ricarico ? '+' + p.ricarico + '%' : '0%'} e sconti medi −${Math.round(p.sconti * 100)}% (× ${p.fattore.toFixed(2).replace('.', ',')})`).join(' · ')}.
+              {' '}Pesati sulle notti di ogni casa per portale: {rows.map(r => `${HOUSES_META[r.h]?.short || r.h} × ${r.fattore.toFixed(2).replace('.', ',')}`).join(', ')}.
+            </div>
+          )}
+          <div className="text-xs mt-2" style={{ color: 'var(--text-dim)' }}>
+            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × ricarico di ogni portale × sconti medi (mobile, Genius, ospiti migliori, last minute, settimanali…, con quanto spesso scattano), pesato sulle notti della casa per portale. Ricarichi, sconti e frequenze sono quelli del simulatore «Parità OTA» (scheda Canali, configurazione attuale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
+            {' '}Rosso = prezzo più alto di almeno il {s.prezzoAlto}% <b>e</b> meno notti già vendute che alla stessa data dell'anno scorso. Giallo = solo una delle due. Grigio = l'anno scorso meno di {s.minNottiAnnoScorso} notti vendute nel mese o casa aperta da meno di {s.mesiLancio} mesi.
+            {' '}I prezzi lontani sono sempre più alti di quello che poi si incassa (gli sconti arrivano dopo): il giallo sui mesi lontani da solo non è un allarme, il rosso sì. Soglie in config/prezzi-vendita.js.
+          </div>
+        </>
+      )}
     </Panel>
   );
 }
@@ -983,9 +1085,9 @@ function KpiCard({ label, value, delta, up, tip, align }) {
 }
 
 // Riquadro che compare al passaggio del mouse (o al tocco). tip = { title, rows: [[etichetta, valore, separatore?]], note }
-function TipPop({ tip, wide = false, align }) {
+function TipPop({ tip, wide = false, align, width }) {
   return (
-    <div className={`tip-pop ${wide ? 'wide' : ''} ${align === 'right' ? 'align-right' : ''}`} role="tooltip">
+    <div className={`tip-pop ${wide ? 'wide' : ''} ${align === 'right' ? 'align-right' : ''}`} role="tooltip" style={width ? { width } : undefined}>
       {tip.title && <div className="tip-title">{tip.title}</div>}
       {tip.rows?.length > 0 && (
         <table>
