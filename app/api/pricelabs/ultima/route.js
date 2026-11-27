@@ -6,24 +6,10 @@
 import { NextResponse } from 'next/server';
 import { fileDelGiorno, giornoRoma } from '@/lib/pricelabs';
 import { riassumiIstantanea } from '@/lib/prezzi-vendita';
+import { leggiFoto as leggi } from '@/lib/foto-prezzi';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
-
-async function leggi(nome) {
-  // Prove in locale: la stessa cartella in cui salva /api/pricelabs/salva.
-  if (process.env.PREZZI_DIR && !process.env.VERCEL) {
-    const fs = await import('node:fs/promises');
-    const path = await import('node:path');
-    try { return await fs.readFile(path.join(process.env.PREZZI_DIR, nome), 'utf8'); } catch { return null; }
-  }
-  const { get } = await import('@vercel/blob');
-  let r;
-  try { r = await get(nome, { access: 'private', useCache: false }); }
-  catch (e) { if (/NotFound/i.test(e?.name || '') || /not.?found/i.test(e?.message || '')) return null; throw e; }
-  if (!r || r.statusCode !== 200) return null;
-  return await new Response(r.stream).text();
-}
 
 export async function GET() {
   const oggi = giornoRoma();
