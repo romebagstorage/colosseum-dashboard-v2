@@ -33,6 +33,14 @@ PriceLabs mostra solo i prezzi di oggi. Ogni mattina alle 5:00 UTC (6:00 d'inver
 - Prova in locale senza chiave vera né Blob: `PRICELABS_BASE_URL` (un PriceLabs finto) e `PREZZI_DIR` (una cartella) valgono solo fuori da Vercel.
 - Per ora nessuna scheda li mostra: servono a misurare, più avanti, quanto arriva su 100 € di PriceLabs e come si muovono i prezzi avvicinandosi alla data.
 
+## Prezzi in vendita (dal 27/11/2026)
+Pannello nella scheda «Forward booking», sotto «Prezzo medio a notte già venduto». Risponde a «i prezzi delle notti future sono troppo alti rispetto all'anno scorso?».
+- `GET /api/pricelabs/ultima` (da loggati) legge l'ultima foto salvata dal cron in `prezzi-pricelabs/AAAA-MM-GG.json` (oggi o fino a 7 giorni prima; in locale da `PREZZI_DIR`) e la riduce a una media per casa e mese (`riassumiIstantanea` in `lib/prezzi-vendita.js`). Non chiama PriceLabs.
+- Per ogni casa e per i prossimi 6 mesi (il mese in corso solo se ne restano almeno 10 giorni): prezzo chiesto = media di `user_price` sui giorni in vendita (non prenotati, non bloccati), prima del ricarico dei portali; anno scorso = quanto incassato a notte nello stesso mese, solo alloggio (pagato − tassa − pulizie); notti già vendute oggi contro la stessa data dell'anno scorso (`forwardBooking`).
+- Semaforo (`prezziInVendita`): rosso = prezzo ≥ +20% **e** notti vendute sotto l'anno scorso; giallo = una delle due; verde = nessuna; grigio = anno scorso con meno di 10 notti nel mese o casa aperta da meno di 6 mesi (Prestige nel 2025-26). Soglie in `config/prezzi-vendita.js`.
+- **Limiti noti**: il prezzo chiesto è prima del ricarico (Airbnb +30%) mentre l'incassato comprende ricarichi e sconti, quindi il confronto è prudente; i prezzi lontani sono sempre più alti dell'incassato finale. Il confronto giusto, prezzo chiesto oggi contro prezzo chiesto un anno fa alla stessa distanza dalla data, sarà possibile dal 19/11/2027 con le foto giornaliere.
+- **Pulizie**: dal 27/11/2026 ogni prenotazione del payload ha `cleaning` (`money.fareCleaning` di Guesty). I prezzi a notte del Forward booking (tabella mensile e «Prezzo medio a notte già venduto») sono ora senza pulizie; il KPI «ADR forward» e la Panoramica restano come prima (ricavi / notti). Per le cancellate senza importo la stima toglie le pulizie in proporzione.
+
 ## Chekin, controllo degli arrivi (dal 20/11/2026)
 `GET /api/chekin/arrivi` (da loggati) è il controllo dell'agente 8 «Arrivi e conformità» del giro del mattino (`lib/chekin.js`, `controllaArrivi`). Legge da Chekin tutte le prenotazioni di ogni casa, pagina per pagina, perché il filtro per data di Chekin non viene applicato. Le incrocia con Guesty (`getPayload`: confermate per codice o per casa e date, cancellate per casa e date) e restituisce:
 - `arrivi`: arrivi da oggi a fra 7 giorni con ospiti attesi e registrati, registrazione, Questura (Alloggiati Web), ISTAT e tassa di soggiorno;
