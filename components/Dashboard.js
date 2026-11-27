@@ -756,7 +756,7 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
                             title: `${HOUSES_META[r.h]?.short || r.h}, ${monthLabel(c.month)}: ${st.label.toLowerCase()}`,
                             rows: [
                               ['Prezzo PriceLabs oggi (giorni liberi)', c.prezzo != null ? fmtEur(c.prezzo) : '—'],
-                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + (r.fonte === 'misurato' ? ', misurato' : ', simulatore') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
+                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + ({ misurato: ', misurato', misto: ', misurato casa + tutte le case' }[r.fonte] || ', simulatore') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
                               ['Consiglio PriceLabs', c.consiglio != null ? fmtEur(c.consiglio) : '—'],
                               ['Giorni ancora in vendita', `${fmtNum(c.liberi)} su ${fmtNum(c.giorni)}`],
                               ['Incassato a notte, anno scorso', c.lyAdr != null ? `${fmtEur(c.lyAdr)} (${fmtNum(c.lyNotti)} notti)` : '—'],
@@ -775,7 +775,7 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
           </div>
           {rows[0] && (
             <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
-              <b>Da PriceLabs a pagato dall'ospite:</b>{' '}
+              <b>Simulatore «Parità OTA»</b> (da PriceLabs a pagato dall'ospite; vale solo senza abbastanza misure):{' '}
               {rows[0].portali.map(p => `${p.nome} ${p.ricarico ? '+' + p.ricarico + '%' : '0%'} e sconti medi −${Math.round(p.sconti * 100)}% (× ${p.fattore.toFixed(2).replace('.', ',')})`).join(' · ')}.
               {' '}Pesati sulle notti di ogni casa per portale: {rows.map(r => `${HOUSES_META[r.h]?.short || r.h} × ${r.simulatore.toFixed(2).replace('.', ',')}`).join(', ')}.
             </div>
@@ -787,13 +787,17 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
                 const m = r.misura, f = v => v.toFixed(2).replace('.', ',');
                 const nome = HOUSES_META[r.h]?.short || r.h;
                 if (!m?.coeff) return `${nome} nessuna prenotazione ancora`;
-                return `${nome} × ${f(m.coeff)} su ${fmtNum(m.notti)} notti${r.fonte === 'misurato' ? ' (usato)' : ` (servono ${s.minNottiRealizzo} notti: per ora vale il simulatore)`}`;
+                const usato = r.fonte === 'misurato' ? 'usato da solo'
+                  : r.fonte === 'misto' ? `meno di ${s.minNottiRealizzo} notti: mescolato con tutte le case → × ${f(r.fattore)}`
+                  : `servono ${s.minNottiRealizzo} notti: per ora vale il simulatore`;
+                return `${nome} × ${f(m.coeff)} su ${fmtNum(m.notti)} notti (${usato})`;
               }).join(' · ')}.
+              {rows[0].tutte?.coeff ? ` Tutte le case insieme × ${rows[0].tutte.coeff.toFixed(2).replace('.', ',')} su ${fmtNum(rows[0].tutte.notti)} notti.` : ''}
               {!realizzo && ' Misura non disponibile in questo momento: vale il simulatore.'}
             </div>
           )}
           <div className="text-xs mt-2" style={{ color: 'var(--text-dim)' }}>
-            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × il fattore della casa. Il fattore è quello misurato sulle prenotazioni vere quando ce ne sono almeno {s.minNottiRealizzo} notti; altrimenti quello del simulatore «Parità OTA» (ricarico di ogni portale × sconti medi con quanto spesso scattano, pesato sulle notti della casa per portale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
+            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × il fattore della casa. Il fattore è quello misurato sulle prenotazioni vere: con almeno {s.minNottiRealizzo} notti quello della casa da solo; con meno, quello della casa mescolato con quello di tutte le case (che pesa come {s.pesoPortafoglio} notti), così una casa con poche prenotazioni non dipende da una sola. Solo se nemmeno tutte le case insieme arrivano a {s.minNottiRealizzo} notti vale il simulatore «Parità OTA» (ricarico di ogni portale × sconti medi con quanto spesso scattano, pesato sulle notti della casa per portale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
             {' '}Rosso = prezzo più alto di almeno il {s.prezzoAlto}% <b>e</b> meno notti già vendute che alla stessa data dell'anno scorso. Giallo = solo una delle due. Grigio = l'anno scorso meno di {s.minNottiAnnoScorso} notti vendute nel mese o casa aperta da meno di {s.mesiLancio} mesi.
             {' '}I prezzi lontani sono sempre più alti di quello che poi si incassa (gli sconti arrivano dopo): il giallo sui mesi lontani da solo non è un allarme, il rosso sì. Soglie in config/prezzi-vendita.js.
           </div>
