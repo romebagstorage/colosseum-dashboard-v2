@@ -702,14 +702,18 @@ const STATO_VENDITA = {
 function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
   const [foto, setFoto] = useState(null);
   const [errore, setErrore] = useState(null);
+  const [realizzo, setRealizzo] = useState(null);
   useEffect(() => {
     let vivo = true;
     fetch('/api/pricelabs/ultima', { cache: 'no-store' })
       .then(async r => { const j = await r.json().catch(() => ({})); if (!vivo) return; if (r.ok && j.ok) setFoto(j); else setErrore(j.error || `errore ${r.status}`); })
       .catch(e => vivo && setErrore(e.message));
+    // Il coefficiente di realizzo è facoltativo: se manca si usa il simulatore Parità.
+    fetch('/api/pricelabs/realizzo', { cache: 'no-store' })
+      .then(r => r.json()).then(j => { if (vivo && j?.ok) setRealizzo(j); }).catch(() => {});
     return () => { vivo = false; };
   }, []);
-  const rows = useMemo(() => (foto ? prezziInVendita(foto, data, houses, new Date(), months) : []), [foto, data, houses, months]);
+  const rows = useMemo(() => (foto ? prezziInVendita(foto, data, houses, new Date(), months, PREZZI_VENDITA_SOGLIE, realizzo) : []), [foto, data, houses, months, realizzo]);
   const senzaPulizie = (data?.reservations || []).some(r => r.cleaning != null);
   const s = PREZZI_VENDITA_SOGLIE;
   const conteggio = rows.flatMap(r => r.mesi).reduce((a, c) => ({ ...a, [c.stato]: (a[c.stato] || 0) + 1 }), {});
@@ -752,7 +756,7 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
                             title: `${HOUSES_META[r.h]?.short || r.h}, ${monthLabel(c.month)}: ${st.label.toLowerCase()}`,
                             rows: [
                               ['Prezzo PriceLabs oggi (giorni liberi)', c.prezzo != null ? fmtEur(c.prezzo) : '—'],
-                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
+                              ['Pagato in media dall\'ospite (× ' + r.fattore.toFixed(2).replace('.', ',') + (r.fonte === 'misurato' ? ', misurato' : ', simulatore') + ')', c.atteso != null ? fmtEur(c.atteso) : '—'],
                               ['Consiglio PriceLabs', c.consiglio != null ? fmtEur(c.consiglio) : '—'],
                               ['Giorni ancora in vendita', `${fmtNum(c.liberi)} su ${fmtNum(c.giorni)}`],
                               ['Incassato a notte, anno scorso', c.lyAdr != null ? `${fmtEur(c.lyAdr)} (${fmtNum(c.lyNotti)} notti)` : '—'],
@@ -773,11 +777,23 @@ function PrezziVenditaPanel({ data, houses, lyLabel, months = 6 }) {
             <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
               <b>Da PriceLabs a pagato dall'ospite:</b>{' '}
               {rows[0].portali.map(p => `${p.nome} ${p.ricarico ? '+' + p.ricarico + '%' : '0%'} e sconti medi −${Math.round(p.sconti * 100)}% (× ${p.fattore.toFixed(2).replace('.', ',')})`).join(' · ')}.
-              {' '}Pesati sulle notti di ogni casa per portale: {rows.map(r => `${HOUSES_META[r.h]?.short || r.h} × ${r.fattore.toFixed(2).replace('.', ',')}`).join(', ')}.
+              {' '}Pesati sulle notti di ogni casa per portale: {rows.map(r => `${HOUSES_META[r.h]?.short || r.h} × ${r.simulatore.toFixed(2).replace('.', ',')}`).join(', ')}.
+            </div>
+          )}
+          {rows[0] && (
+            <div className="text-xs mt-2" style={{ color: 'var(--text-dim)' }}>
+              <b>Misurato sulle prenotazioni vere</b> (pagato per l'alloggio ÷ prezzo PriceLabs del mattino in cui l'ospite ha prenotato, prenotazioni dal {fmtDay(s.primaFoto)}):{' '}
+              {rows.map(r => {
+                const m = r.misura, f = v => v.toFixed(2).replace('.', ',');
+                const nome = HOUSES_META[r.h]?.short || r.h;
+                if (!m?.coeff) return `${nome} nessuna prenotazione ancora`;
+                return `${nome} × ${f(m.coeff)} su ${fmtNum(m.notti)} notti${r.fonte === 'misurato' ? ' (usato)' : ` (servono ${s.minNottiRealizzo} notti: per ora vale il simulatore)`}`;
+              }).join(' · ')}.
+              {!realizzo && ' Misura non disponibile in questo momento: vale il simulatore.'}
             </div>
           )}
           <div className="text-xs mt-2" style={{ color: 'var(--text-dim)' }}>
-            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × ricarico di ogni portale × sconti medi (mobile, Genius, ospiti migliori, last minute, settimanali…, con quanto spesso scattano), pesato sulle notti della casa per portale. Ricarichi, sconti e frequenze sono quelli del simulatore «Parità OTA» (scheda Canali, configurazione attuale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
+            Il numero in grande è quanto pagherà in media l'ospite a notte per l'alloggio: prezzo PriceLabs di oggi (media dei giorni ancora liberi) × il fattore della casa. Il fattore è quello misurato sulle prenotazioni vere quando ce ne sono almeno {s.minNottiRealizzo} notti; altrimenti quello del simulatore «Parità OTA» (ricarico di ogni portale × sconti medi con quanto spesso scattano, pesato sulle notti della casa per portale). Anno scorso = quanto hai incassato davvero a notte nello stesso mese, solo alloggio{senzaPulizie ? ' (senza pulizie né tassa di soggiorno)' : ' (i dati di oggi non hanno ancora le pulizie: premi «Ricarica dati»)'}, ricarichi e sconti compresi.
             {' '}Rosso = prezzo più alto di almeno il {s.prezzoAlto}% <b>e</b> meno notti già vendute che alla stessa data dell'anno scorso. Giallo = solo una delle due. Grigio = l'anno scorso meno di {s.minNottiAnnoScorso} notti vendute nel mese o casa aperta da meno di {s.mesiLancio} mesi.
             {' '}I prezzi lontani sono sempre più alti di quello che poi si incassa (gli sconti arrivano dopo): il giallo sui mesi lontani da solo non è un allarme, il rosso sì. Soglie in config/prezzi-vendita.js.
           </div>
